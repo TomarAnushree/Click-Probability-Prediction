@@ -1,0 +1,458 @@
+---
+title: "Click Prediction (WNS Analytics Wizard 2019)"
+output: html_notebook
+author: Anushree Tomar
+---
+
+
+#Import Required Libraries
+```{r Import Libraries, message=FALSE, warning=FALSE, paged.print=FALSE}
+library(data.table)
+library(DataExplorer)
+library(caret)
+library(dplyr)
+library(lubridate)
+library(h2o)
+library(ggplot2)
+library(scales)
+
+```
+
+#Reading files 
+
+First read all files in the train and test folder
+```{r}
+train<-fread("train_NA17Sgz\\train.csv")
+view_log<-fread("train_NA17Sgz\\view_log.csv")
+item_data<-fread("train_NA17Sgz\\item_data.csv")
+
+test<-fread("test_aq1FGdB\\test.csv")
+```
+
+#Observing Data
+
+Here we will observe the data in train folder 
+
+```{r}
+head(train)
+```
+In the train data Add impression id are given with their impression time,user_id,Application Code for a partner website where the ad was shown and information of Whether user clicked the AD or not  are given. 
+
+```{r}
+head(item_data)
+```
+In the item_data type and price of product are given with category depth and item id.
+
+```{r}
+head(view_log)
+```
+In view_log data server log of users and items are given with their id's.
+
+
+
+```{r}
+head(test)
+```
+Test data has similar features as train data.
+
+
+#Check for user_id in train and test
+```{r}
+trainuid<-as.data.frame(table(train$user_id))
+testuid<-as.data.frame(table(test$user_id))
+trainuid$Var1<-as.character(trainuid$Var1)
+testuid$Var1<-as.character(testuid$Var1)
+matchuid<-semi_join(trainuid,testuid,by="Var1")
+non_matched<-as.data.frame(anti_join(trainuid,testuid,by="Var1"))
+```
+There are different-different  users in both train and test files. So we will not consider this variable in model building.
+
+#Check for missing value
+```{r}
+introduce(train)
+```
+
+```{r}
+introduce(test)
+```
+
+```{r}
+introduce(view_log)
+```
+
+```{r}
+introduce(item_data)
+```
+All data has no missing value.
+
+
+#Merge Data
+
+At first we merge the view_log files with the item_data for analysis.
+```{r}
+#merge view_log and item_data by unique item_id
+newdata<-merge(view_log,item_data,by="item_id",all.x =  T)
+introduce(newdata)
+
+```
+```{r}
+head(newdata)
+```
+
+```{r}
+apply(newdata,2,function(x){sum(is.na(x))})
+```
+
+```{r}
+newdata[which(is.na(newdata$item_price))]
+```
+As you can see that there are 1782 records where price of item, category depth and product type are missing. 
+
+
+#Data Visualization
+
+#Check proportion of target variable
+```{r}
+print("Proportion of target variable in train data")
+prop.table(table(train[,is_click]))*100
+
+
+```
+
+#Percent distribution of click 
+```{r}
+ggplot(train, aes(x = factor(is_click))) +
+  geom_bar(aes(y = (..count..)/sum(..count..),fill=factor(is_click))) +
+  geom_text(aes(y = ((..count..)/sum(..count..)), label = scales::percent((..count..)/sum(..count..))), stat = "count",   vjust = -0.3) + scale_y_continuous(labels = percent)+scale_x_discrete(labels=c("0"="No Click","1"="Click"))+  labs(x=" ",y = "Percent click",fill="is click")
+
+```
+There are only 4.6% of users clicking the ad which is shown to them on the partner websites.
+
+#Percent distribution of click by network
+```{r}
+ggplot(train, aes(x = factor(is_click))) +
+  geom_bar(aes(y = (..count..)/sum(..count..),fill=factor(is_click))) +
+  geom_text(aes(y = ((..count..)/sum(..count..)), label = scales::percent((..count..)/sum(..count..))), stat = "count",   vjust = -0.3) + scale_y_continuous(labels = percent)+scale_x_discrete(labels=c("0"="No Click","1"="Click"))+facet_wrap(~is_4G)+
+  labs(title ="No 4G                                               4G", x=" ",y = "Percent click",fill="is click")
+
+  
+```
+From the above graph we can see that 3.0% of users clicking the add not having 4G network.  
+
+#Percent distribution of click by OS version
+```{r}
+ggplot(train, aes(x = factor(is_click))) +
+  geom_bar(aes(y = (..count..)/sum(..count..),fill=factor(is_click))) +
+  geom_text(aes(y = ((..count..)/sum(..count..)), label = scales::percent((..count..)/sum(..count..))), stat = "count",   vjust = -0.3) + scale_y_continuous(labels = percent)+scale_x_discrete(labels=c("0"="No Click","1"="Click"))+facet_wrap(~os_version)+
+  labs(x=" ",y = "Percent click",fill="is click")
+
+  
+```
+2.3% of users using latest os version.
+
+#Analyse Frequently clicked Application code 
+```{r}
+appcode<-train[is_click==1,list(app_code)]
+
+appcode<-as.data.frame(table(appcode))
+
+appcode <-appcode[order(appcode$Freq,decreasing = T),]
+head(appcode)
+
+```
+Above data is showing top 6 most frequently clicked application code for a partner website where the ad was shown.
+
+
+#Data type of variables
+```{r}
+str(train)
+```
+
+#Feature Engineering
+
+#Convert "impression_time" into date time
+```{r}
+test$impression_time<-ymd_hms(test$impression_time)
+train$impression_time<-ymd_hms(train$impression_time)
+
+```
+
+
+#Extract year,month,day,hour,min and seconds from date 
+
+```{r}
+
+#Process test data
+
+test<-test[,c("I_min","I_sec","I_mon","I_wday","I_hour","I_yr"):=list(minute(impression_time),second(impression_time),months(impression_time), wday(impression_time), data.table::hour(impression_time), data.table::year(impression_time))]
+
+#process train data
+
+train<-train[,c("I_min","I_sec","I_mon","I_wday","I_hour","I_yr"):=list(minute(impression_time),second(impression_time),months(impression_time), wday(impression_time), data.table::hour(impression_time), data.table::year(impression_time))]
+
+```
+
+
+
+#Convert Character variable to factor
+```{r}
+
+test[,c("impression_id","user_id","app_code" ,"os_version","is_4G","I_mon","I_wday","I_yr" )]<-lapply(test[,c("impression_id","user_id","app_code" ,"os_version","is_4G" ,"I_mon","I_wday","I_yr")], as.factor)
+
+train[,c("impression_id","user_id","app_code","os_version","is_4G","I_mon","I_wday","I_yr","is_click")]<-lapply(train[,c("impression_id","user_id","app_code" ,"os_version","is_4G","I_mon","I_wday","I_yr","is_click")], as.factor)
+
+```
+
+#Percent distribution of click by month
+```{r}
+ggplot(train, aes(x = is_click)) +
+  geom_bar(aes(y = (..count..)/sum(..count..),fill=is_click)) +
+  geom_text(aes(y = ((..count..)/sum(..count..)), label = scales::percent((..count..)/sum(..count..))), stat = "count",   vjust = -0.3) + scale_y_continuous(labels = percent)+scale_x_discrete(labels=c("0"="No Click","1"="Click"))+facet_wrap(~I_mon)+
+  labs(x=" ",y = "Percent click",fill="is click")
+
+  
+```
+ 
+
+#Percent distribution of click by weekdays
+```{r}
+ggplot(train, aes(x = is_click)) +
+  geom_bar(aes(y = (..count..)/sum(..count..),fill=is_click)) +
+  geom_text(aes(y = ((..count..)/sum(..count..)), label = scales::percent((..count..)/sum(..count..))), stat = "count",   vjust = -0.3) + scale_y_continuous(labels = percent)+scale_x_discrete(labels=c("0"="No Click","1"="Click"))+facet_wrap(~I_wday)+
+  labs(x=" ",y = "Percent click",fill="is click")
+
+  
+```
+From the above graph we can see that 2.5% of users clicked the add in December and 0.8% of user cliked the add on Tuesday
+
+#Remove variable
+
+we will remove "impression_id","impression_time","user_id","app_code","I_sec","I_yr" from  test and train data
+```{r}
+label<-test$impression_id
+test[,c("impression_id","impression_time","user_id","app_code","I_sec","I_yr"):=NULL]
+train[,c("impression_id","impression_time","user_id","app_code","I_sec","I_yr"):=NULL]
+
+```
+
+
+#Data Partition for model building
+
+Perform 50-50 split
+
+```{r}
+
+trainindex<-createDataPartition(train$is_click,p=0.5,list=F)
+traindata<-train[trainindex,]
+testdata<-train[-trainindex,]
+```
+
+#Model buliding with h2o
+
+Initialize Connection
+
+nthreads is used to specify the number of threads. -1 denotes all available cores can be used.
+```{r}
+h2o.init(nthreads = -1)
+```
+
+#Convert Data into h2o format
+
+```{r}
+trainh2o <- as.h2o(traindata)
+testh2o <- as.h2o(testdata)
+
+#set variables
+y <- "is_click"
+x <- setdiff(colnames(trainh2o),y)
+```
+
+#Model random Forest
+```{r}
+DRF <- h2o.randomForest(x = x, y = y,
+                        training_frame = trainh2o,
+                        validation_frame = testh2o,
+                        keep_cross_validation_models = TRUE,
+                        balance_classes = F,
+                        model_id = "myDRF",
+                        nfolds=5,
+                        max_depth = 20,
+                        ntrees = 100)
+```
+
+
+#Prediction on test data
+```{r}
+h2o.performance (DRF,xval = T)
+test_prediction_new = h2o.predict(DRF, newdata = testh2o)
+
+```
+
+#Model Evaluation on test data
+```{r}
+predDRF<-as.data.frame(test_prediction_new)
+confusionMatrix(factor(testdata$is_click),factor(predDRF$predict),mode = "everything",positive = "1")
+```
+
+#Final prediction on test data
+```{r}
+finalpred = h2o.predict(DRF, newdata = as.h2o(test))
+finalpred<-as.data.frame(finalpred)
+finalpred$impression_id<-label
+submission<-finalpred[,c(4,1)]
+colnames(submission)[2]<-"is_click"
+write.csv(submission,"RF_model2.csv",row.names = F)
+```
+
+#GBM classifier
+```{r}
+# GBM hyperparamters
+gbm_params1 <- list(learn_rate = c(0.01, 0.1),
+                    max_depth = c(3, 5, 9),
+                    sample_rate = c(0.8, 1.0),
+                    col_sample_rate = c(0.2, 0.5, 1.0))
+
+search_criteria <- list(strategy = "RandomDiscrete",max_runtime_secs = 60) 
+
+# Train and validate a grid of GBMs
+gbm_grid1 <- h2o.grid("gbm", x = x, y = y,
+                      grid_id = "gbm_grid1",
+                      training_frame = trainh2o,
+                      validation_frame = testh2o,
+                      search_criteria = search_criteria,
+                      ntrees = 100,
+                      seed = 1,
+                      hyper_params = gbm_params1)
+
+# Get the grid results, sorted by f1
+
+gbm_gridperf1 <- h2o.getGrid(grid_id = "gbm_grid1",sort_by = "auc",decreasing = TRUE)
+
+best_gbm_model <- h2o.getModel(gbm_gridperf1@model_ids[[1]])
+
+print(gbm_gridperf1)
+
+```
+#Prediction on test data
+```{r}
+test_prediction_new = h2o.predict(best_gbm_model, newdata = testh2o)
+
+```
+
+
+```{r}
+pred<-as.data.frame(test_prediction_new)
+confusionMatrix(factor(testdata$is_click),factor(pred$predict),mode = "everything",positive = "1")
+```
+
+#Final prediction on test data
+```{r}
+finalpred = h2o.predict(best_gbm_model, newdata = as.h2o(test))
+finalpred<-as.data.frame(finalpred)
+finalpred$impression_id<-label
+submission<-finalpred[,c(4,1)]
+colnames(submission)[2]<-"is_click"
+write.csv(submission,"gbm_modelnew.csv",row.names = F)
+
+```
+
+
+#Deep learning model 
+
+Perform random grid search over all parameters for hyperparameter tuning.
+
+```{r}
+#set parameter space
+activation_opt <- c("Rectifier","RectifierWithDropout", "Maxout","MaxoutWithDropout")
+hidden_opt <- list(c(10,10),c(20,15),c(50,50,50))
+l1_opt <- c(0,1e-3,1e-5)
+l2_opt <- c(0,1e-3,1e-5)
+
+hyper_params <- list( activation=activation_opt,
+                     hidden=hidden_opt,
+                     l1=l1_opt,
+                     l2=l2_opt )
+
+#set search criteria
+search_criteria <- list(strategy = "RandomDiscrete", max_models=10)
+
+#train model
+dl_grid <- h2o.grid("deeplearning"
+                   ,grid_id = "deep_learn"
+                   ,hyper_params = hyper_params
+                   ,search_criteria = search_criteria
+                   ,training_frame = trainh2o
+                   ,x=x
+                   ,y=y
+                   ,nfolds = 5
+                   ,epochs = 50)
+
+#get best model
+d_grid <- h2o.getGrid("deep_learn",sort_by = "auc",decreasing = T)
+best_dl_model <- h2o.getModel(d_grid@model_ids[[1]])
+h2o.performance (best_dl_model,xval = T)
+
+```
+
+#Important variable
+```{r}
+h2o.varimp_plot(best_dl_model)
+```
+
+#Evaluate model on testdata
+```{r}
+
+test_prediction_new = h2o.predict(best_dl_model, newdata = testh2o)
+
+```
+
+```{r}
+pred<-as.data.frame(test_prediction_new)
+confusionMatrix(factor(testdata$is_click),factor(pred$predict),mode = "everything",positive = "1")
+```
+
+#Final prediction on test data
+```{r}
+finalpred = h2o.predict(best_dl_model, newdata = as.h2o(test))
+finalpred<-as.data.frame(finalpred)
+finalpred$impression_id<-label
+submission<-finalpred[,c(4,1)]
+colnames(submission)[2]<-"is_click"
+write.csv(submission,"dlnew.csv",row.names = F)
+```
+
+#Ensemble model
+
+Ensemble model is nothing but combination of algorithims either similar or dissimilar.
+Here we select the majority of prediction as final prediction.
+```{r}
+model1<-fread("RF_model2.csv")
+model2<-read_csv("gbm_modelnew.csv")
+model3<-fread("dlnew.csv")
+
+
+final<-cbind(model1,model2$is_click,model3$is_click)
+final$add<-final$is_click+final$V2+final$V3
+final$add<-ifelse(final$add>=2,1,0)
+
+submission<-cbind(final$impression_id,final$add)
+colnames(submission)<-c("impression_id","is_click")
+submission<-as.data.frame(submission)
+
+write.csv(submission,"ensemble.csv",row.names = F)
+```
+
+
+#Shutting Down H20
+```{r}
+h2o.shutdown()
+```
+
+
+
+
+
+
+
+
+
