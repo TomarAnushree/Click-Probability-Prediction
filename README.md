@@ -22,33 +22,33 @@ This contains 3 files and description of each is given below:
 
 ### train.csv :
 
-* Variable          Definition
-* impression_id     AD impression id
-* impression_time   Time of the impression at partner website
-* user_id           AD impression id  
-* app_code          Application Code for a partner website where the ad was shown
-* os_version        Version of operating system
-* is_4G             1-Using 4G, 0-No 4G
-* is_click          (target) Whether user clicked the AD (1-click, 0-no click)
+* Variable:          Definition
+* impression_id:     AD impression id
+* impression_time:  Time of the impression at partner website
+* user_id:           AD impression id  
+* app_code:          Application Code for a partner website where the ad was shown
+* os_version:        Version of operating system
+* is_4G:             1-Using 4G, 0-No 4G
+* is_click:          (target) Whether user clicked the AD (1-click, 0-no click)
 
 ### view_log.csv :
 
-* Variable          Definition
-* server_time       Timestamp of the log
-* device_type       Device type of the user
-* session_id        Browser session id
-* user_id           user id
-* item_id           Item id
+* Variable:          Definition
+* server_time:       Timestamp of the log
+* device_type:       Device type of the user
+* session_id:        Browser session id
+* user_id:           user id
+* item_id:           Item id
  
 ### item_data.csv:
 
-* Variable          Definition
-* item_id           Item id
-* item_price        Price of the item
-* category_1        Category depth 1
-* category_2        Category depth 2
-* category_3        Category depth 3
-* product_type      anonymized item type
+* Variable:          Definition
+* item_id:           Item id
+* item_price:        Price of the item
+* category_1:        Category depth 1
+* category_2:        Category depth 2
+* category_3:        Category depth 3
+* product_type:      anonymized item type
 
 ## test.csv: 
 
@@ -62,15 +62,15 @@ This file contains the format in which you have to submit your predictions.
 
 Submissions are evaluated on area under the ROC curve between the predicted probability and the observed target.
 
-# My Rank:   542
+### My Rank:   542
 
 * Public Score:    0.53192672412819
 
-# My Rank:   559
+### My Rank:   559
 
 * Private Score:   0.519656151440491
 
-# Total Participants: 6456
+### Total Participants: 6456
 
 
 
