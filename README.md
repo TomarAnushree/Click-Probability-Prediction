@@ -72,7 +72,7 @@ Submissions are evaluated on area under the ROC curve between the predicted prob
 
 ### Total Participants: 6456
 
-* Link: C:\Users\Anushree\Desktop\Click Prediction.nb.html
+
 
 
 
